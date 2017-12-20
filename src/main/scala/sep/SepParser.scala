@@ -5,7 +5,7 @@ import scala.util.parsing.combinator.RegexParsers
 sealed abstract class SepToken
 case class EmojiToken(name: String) extends SepToken
 case class CommandToken(name: String) extends SepToken
-case class ArgumentToken(key: String, value: Option[String]) extends SepToken
+case class ArgumentToken(key: String, value: String) extends SepToken
 case object FrameToken extends SepToken
 
 object SepParser extends RegexParsers {
@@ -13,10 +13,10 @@ object SepParser extends RegexParsers {
 
   def emoji: Parser[SepToken] = ':' ~> word <~ ':' ^^ { name => EmojiToken(name) }
 
-  def option: Parser[SepToken] = "--" ~> word ^^ { key => ArgumentToken(key, None) }
+  def option: Parser[SepToken] = "--" ~> word ^^ { key => ArgumentToken(key, "") }
 
   def keyValue: Parser[SepToken] = "--" ~> (word <~ '=') ~ word ^^ {
-    case key ~ value => ArgumentToken(key, Some(value))
+    case key ~ value => ArgumentToken(key, value)
   }
 
   def argument: Parser[SepToken] = keyValue | option

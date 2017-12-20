@@ -1,8 +1,10 @@
 package sep
 
+import java.awt.Color
 import java.awt.image.BufferedImage
 import play.api.libs.json.JsValue
 import scala.annotation.tailrec
+import scala.util.Try
 
 case class EmojiList(json: JsValue) {
   val Alias = "alias:(.+)".r
@@ -17,32 +19,56 @@ case class EmojiList(json: JsValue) {
   }
 }
 
+case class ArgumentStack(args: Map[String, String]) {
+  def ::(argument: ArgumentToken): ArgumentStack = ArgumentStack(args + (argument.key -> argument.value))
+
+  def get(name: String): Option[String] = {
+    args.get(name)
+  }
+
+  def getInt(name: String): Option[Int] = {
+    get(name).flatMap(value => Try(value.toInt).toOption)
+  }
+
+  def getColor(name: String): Option[Color] = {
+    get(name).flatMap(value => Try(new Color(Integer.decode(value))).toOption)
+  }
+}
+
 class SepException(message: String) extends Exception(message)
 
-class SlackEmojiProcessor(
-  val emojiStack: List[BufferedImage],
-  val argumentStack: List[ArgumentToken],
-  val frameStack: List[BufferedImage]
+case class SlackEmojiProcessor(
+  tokens: List[SepToken],
+  emojiStack: List[BufferedImage],
+  argumentStack: ArgumentStack,
+  frameStack: List[BufferedImage],
+  step: Int
 ) {
-  def apply(token: SepToken, emojiList: EmojiList, commandMap: Map[String, SepCommand]): SlackEmojiProcessor = {
-    token match {
-      case EmojiToken(name) =>
+  @tailrec
+  final def run(emojiList: EmojiList, commandMap: Map[String, SepCommand]): SlackEmojiProcessor = {
+    if (step > 200) throw new SepException("ステップ数が200を超えました")
+    tokens match {
+      case Nil => this
+      case EmojiToken(name) :: tokens =>
         if (emojiStack.size < 10) {
           val emoji = emojiList.get(name).getOrElse(throw new SepException(s"${name} なんてカスタム絵文字ないよ"))
-          new SlackEmojiProcessor(emoji :: emojiStack, argumentStack, frameStack)
+          copy(tokens = tokens, emojiStack = emoji :: emojiStack, step = step + 1).run(emojiList, commandMap)
         } else {
-          throw new SepException("絵文字スタックが溢れちゃった")
+          throw new SepException("絵文字スタックが溢れました")
         }
-      case argument@ArgumentToken(_, _) =>
-        new SlackEmojiProcessor(emojiStack, argument :: argumentStack, frameStack)
-      case CommandToken(name) =>
+      case (argument@ArgumentToken(_, _)) :: tokens =>
+        copy(tokens = tokens, argumentStack = argument :: argumentStack).run(emojiList, commandMap)
+      case CommandToken("loop") :: tokens =>
+        val n = argumentStack.getInt("n").getOrElse(1)
+        copy(tokens = List.fill(n)(tokens).flatten).run(emojiList, commandMap)
+      case CommandToken(name) :: tokens =>
         val command = commandMap.get(name).getOrElse(throw new SepException(s"${name} なんてコマンドないよ"))
-        new SlackEmojiProcessor(command(emojiStack, Arguments(argumentStack)), Nil, frameStack)
-      case FrameToken =>
+        copy(tokens = tokens, emojiStack = command(emojiStack, argumentStack), argumentStack = ArgumentStack(Map.empty), step = step + 1).run(emojiList, commandMap)
+      case FrameToken :: tokens =>
         emojiStack match {
-          case Nil => this
+          case Nil => copy(tokens = tokens).run(emojiList, commandMap)
           case emoji :: stack =>
-            new SlackEmojiProcessor(stack, argumentStack, emoji :: frameStack)
+            copy(tokens = tokens, emojiStack = stack, frameStack = emoji :: frameStack).run(emojiList, commandMap)
         }
     }
   }
@@ -53,12 +79,12 @@ object SlackEmojiProcessor {
     "compose" -> new Compose,
     "rotate" -> new Rotate,
     "chromakey" -> new Chromakey,
-    "fill" -> new Fill
+    "fill" -> new Fill,
+    "duplicate" -> new Duplicate
   )
 
-  def apply(tokens: Seq[SepToken], emojiList: EmojiList): SlackEmojiProcessor = {
-    tokens.foldLeft(new SlackEmojiProcessor(Nil, Nil, Nil)) { (sep, token) =>
-      sep(token, emojiList, commandMap)
-    }
+  def apply(tokens: List[SepToken], emojiList: EmojiList): SlackEmojiProcessor = {
+    val sep = SlackEmojiProcessor(tokens, Nil, ArgumentStack(Map.empty), Nil, 0)
+    sep.run(emojiList, commandMap)
   }
 }

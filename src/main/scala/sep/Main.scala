@@ -16,8 +16,7 @@ object Main {
       _ <- {
         val tokens = SepParser(input)
         val sep = SlackEmojiProcessor(tokens, emojiList)
-        val arguments = Arguments(sep.argumentStack)
-        val delayTime = arguments.get("delay").flatMap(_.value).fold(100)(_.toInt)
+        val delayTime = sep.argumentStack.getInt("delay").fold(100)(_.toInt)
         if (sep.emojiStack.nonEmpty || sep.frameStack.nonEmpty) {
           val temp = Files.createTempFile("emoji", "")
           val ext = if (sep.frameStack.nonEmpty) {
