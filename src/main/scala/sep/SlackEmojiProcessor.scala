@@ -80,7 +80,12 @@ object SlackEmojiProcessor {
     "rotate" -> new Rotate,
     "chromakey" -> new Chromakey,
     "fill" -> new Fill,
-    "duplicate" -> new Duplicate
+    "duplicate" -> new Duplicate,
+    "over" -> new Over,
+    "invert" -> new Invert,
+    "gray" -> new Gray,
+    "swap" -> new Swap,
+    "drop" -> new Drop
   )
 
   def apply(tokens: List[SepToken], emojiList: EmojiList): SlackEmojiProcessor = {

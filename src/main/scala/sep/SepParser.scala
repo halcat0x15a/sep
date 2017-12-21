@@ -9,7 +9,7 @@ case class ArgumentToken(key: String, value: String) extends SepToken
 case object FrameToken extends SepToken
 
 object SepParser extends RegexParsers {
-  val word: Parser[String] = """[\w#]+""".r
+  val word: Parser[String] = """[\w#-]+""".r
 
   def emoji: Parser[SepToken] = ':' ~> word <~ ':' ^^ { name => EmojiToken(name) }
 
