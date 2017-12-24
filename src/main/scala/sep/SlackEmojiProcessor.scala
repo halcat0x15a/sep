@@ -38,41 +38,10 @@ case class ArgumentStack(args: Map[String, String]) {
 class SepException(message: String) extends Exception(message)
 
 case class SlackEmojiProcessor(
-  tokens: List[SepToken],
   emojiStack: List[BufferedImage],
   argumentStack: ArgumentStack,
-  frameStack: List[BufferedImage],
-  step: Int
-) {
-  @tailrec
-  final def run(emojiList: EmojiList, commandMap: Map[String, SepCommand]): SlackEmojiProcessor = {
-    if (step > 200) throw new SepException("ステップ数が200を超えました")
-    tokens match {
-      case Nil => this
-      case EmojiToken(name) :: tokens =>
-        if (emojiStack.size < 10) {
-          val emoji = emojiList.get(name).getOrElse(throw new SepException(s"${name} なんてカスタム絵文字ないよ"))
-          copy(tokens = tokens, emojiStack = emoji :: emojiStack, step = step + 1).run(emojiList, commandMap)
-        } else {
-          throw new SepException("絵文字スタックが溢れました")
-        }
-      case (argument@ArgumentToken(_, _)) :: tokens =>
-        copy(tokens = tokens, argumentStack = argument :: argumentStack).run(emojiList, commandMap)
-      case CommandToken("loop") :: tokens =>
-        val n = argumentStack.getInt("n").getOrElse(1)
-        copy(tokens = List.fill(n)(tokens).flatten).run(emojiList, commandMap)
-      case CommandToken(name) :: tokens =>
-        val command = commandMap.get(name).getOrElse(throw new SepException(s"${name} なんてコマンドないよ"))
-        copy(tokens = tokens, emojiStack = command(emojiStack, argumentStack), argumentStack = ArgumentStack(Map.empty), step = step + 1).run(emojiList, commandMap)
-      case FrameToken :: tokens =>
-        emojiStack match {
-          case Nil => copy(tokens = tokens).run(emojiList, commandMap)
-          case emoji :: stack =>
-            copy(tokens = tokens, emojiStack = stack, frameStack = emoji :: frameStack).run(emojiList, commandMap)
-        }
-    }
-  }
-}
+  frameStack: List[BufferedImage]
+)
 
 object SlackEmojiProcessor {
   val commandMap: Map[String, SepCommand] = Map(
@@ -80,16 +49,37 @@ object SlackEmojiProcessor {
     "rotate" -> new Rotate,
     "chromakey" -> new Chromakey,
     "fill" -> new Fill,
-    "duplicate" -> new Duplicate,
-    "over" -> new Over,
     "invert" -> new Invert,
-    "gray" -> new Gray,
-    "swap" -> new Swap,
-    "drop" -> new Drop
+    "gray" -> new Gray
   )
 
   def apply(tokens: List[SepToken], emojiList: EmojiList): SlackEmojiProcessor = {
-    val sep = SlackEmojiProcessor(tokens, Nil, ArgumentStack(Map.empty), Nil, 0)
-    sep.run(emojiList, commandMap)
+    @tailrec
+    def loop(tokens: List[SepToken], sep: SlackEmojiProcessor, step: Int): SlackEmojiProcessor = {
+      if (step > 200) throw new SepException("ステップ数が200を超えました")
+      tokens match {
+        case Nil => sep
+        case EmojiToken(name) :: tokens =>
+          if (sep.emojiStack.size < 10) {
+            val emoji = emojiList.get(name).getOrElse(throw new SepException(s"${name} なんてカスタム絵文字ないよ"))
+            loop(tokens, sep.copy(emojiStack = emoji :: sep.emojiStack), step + 1)
+          } else {
+            throw new SepException("絵文字スタックが溢れました")
+          }
+        case (argument@ArgumentToken(_, _)) :: tokens =>
+          loop(tokens, sep.copy(argumentStack = argument :: sep.argumentStack), step)
+        case CommandToken(name) :: tokens =>
+          val command = commandMap.get(name).getOrElse(throw new SepException(s"${name} なんてコマンドないよ"))
+          val emojiStack = command(sep.emojiStack, sep.argumentStack)
+          loop(tokens, sep.copy(emojiStack = emojiStack, argumentStack = ArgumentStack(Map.empty)), step + 1)
+        case FrameToken :: tokens =>
+          sep.emojiStack match {
+            case Nil => loop(tokens, sep, step)
+            case emoji :: emojiStack =>
+              loop(tokens, sep.copy(emojiStack = emojiStack, frameStack = emoji :: sep.frameStack), step)
+          }
+      }
+    }
+    loop(tokens, SlackEmojiProcessor(Nil, ArgumentStack(Map.empty), Nil), 0)
   }
 }

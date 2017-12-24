@@ -16,17 +16,17 @@ object Main {
       _ <- {
         val tokens = SepParser(input)
         val sep = SlackEmojiProcessor(tokens, emojiList)
-        val delayTime = sep.argumentStack.getInt("delay").fold(100)(_.toInt)
         if (sep.emojiStack.nonEmpty || sep.frameStack.nonEmpty) {
           val temp = Files.createTempFile("emoji", "")
           val ext = if (sep.frameStack.nonEmpty) {
+            val delayTime = sep.argumentStack.getInt("delay").getOrElse(100)
+            val loopCount = sep.argumentStack.getInt("count").getOrElse(0)
             val output = new FileImageOutputStream(temp.toFile)
-            val writer = new GifSequenceWriter(output, sep.frameStack.head.getType, delayTime, true)
-            for (image <- sep.frameStack) {
-              writer.writeToSequence(image)
+            try {
+              writeGif(output, sep.frameStack, delayTime, loopCount)
+            } finally {
+              output.close()
             }
-            writer.close()
-            output.close()
             "gif"
           } else {
             val emoji = sep.emojiStack.head
@@ -45,11 +45,11 @@ object Main {
   def main(args: Array[String]): Unit = {
     try {
       Await.result(run(args(0), args(1), args.drop(2).mkString(" ")), Duration.Inf)
-      System.exit(0)
     } catch {
       case e: Throwable =>
         e.printStackTrace()
         System.exit(1)
     }
+    System.exit(0)
   }
 }

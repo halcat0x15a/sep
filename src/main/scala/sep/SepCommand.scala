@@ -5,7 +5,6 @@ import java.awt.Graphics2D
 import java.awt.geom.AffineTransform
 import java.awt.image.AffineTransformOp
 import java.awt.image.BufferedImage
-import java.awt.image.LookupOp
 
 trait SepCommand {
   def apply(stack: List[BufferedImage], arguments: ArgumentStack): List[BufferedImage]
@@ -15,39 +14,26 @@ class Compose extends SepCommand {
   def apply(stack: List[BufferedImage], arguments: ArgumentStack): List[BufferedImage] = {
     val image = createEmoji
     val g = image.createGraphics
-    if (arguments.get("all").isDefined) {
-      stack.foreach { emoji =>
-        g.drawImage(emoji, 0, 0, null)
-      }
-      g.dispose()
-      List(image)
-    } else {
-      stack match {
-        case x :: y :: tail =>
-          g.drawImage(x, 0, 0, null)
-          g.drawImage(y, 0, 0, null)
-          g.dispose()
-          image :: tail
-        case _ =>
-          g.dispose()
-          stack
-      }
+    stack.foreach { emoji =>
+      g.drawImage(emoji, 0, 0, null)
     }
+    g.dispose()
+    List(image)
   }
 }
 
 class Rotate extends SepCommand {
   def apply(stack: List[BufferedImage], arguments: ArgumentStack): List[BufferedImage] = {
     stack match {
-      case emoji :: tail =>
+      case Nil => Nil
+      case emoji :: stack =>
         val image = createEmoji
-        val g = image.createGraphics
         val angle = arguments.getInt("angle").getOrElse(0)
         val op = new AffineTransformOp(AffineTransform.getRotateInstance(math.toRadians(angle), image.getWidth / 2, image.getHeight / 2), AffineTransformOp.TYPE_BILINEAR)
+        val g = image.createGraphics
         g.drawImage(op.filter(emoji, null), 0, 0, null)
         g.dispose()
-        image :: tail
-      case Nil => Nil
+        image :: stack
     }
   }
 }
@@ -69,11 +55,11 @@ class Chromakey extends SepCommand {
 
   def apply(stack: List[BufferedImage], arguments: ArgumentStack): List[BufferedImage] = {
     stack match {
-      case emoji :: tail =>
+      case Nil => Nil
+      case emoji :: stack =>
         val color = arguments.getColor("color").getOrElse(Color.WHITE)
         val threshold = arguments.getInt("threshold").getOrElse(0)
-        filter(emoji, color, threshold) :: tail
-      case Nil => Nil
+        filter(emoji, color, threshold) :: stack
     }
   }
 }
@@ -86,17 +72,6 @@ class Fill extends SepCommand {
     g.fillRect(0, 0, EmojiSize, EmojiSize)
     g.dispose()
     image :: stack
-  }
-}
-
-class Duplicate extends SepCommand {
-  def apply(stack: List[BufferedImage], arguments: ArgumentStack): List[BufferedImage] = {
-    stack match {
-      case Nil => Nil
-      case emoji :: tail =>
-        val head = new BufferedImage(emoji.getColorModel, emoji.copyData(null), emoji.getColorModel.isAlphaPremultiplied, null)
-        head :: emoji :: tail
-    }
   }
 }
 
@@ -131,34 +106,5 @@ class Gray extends SepCommand {
         g.dispose()
         image :: tail
     }
-  }
-}
-
-class Swap extends SepCommand {
-  def apply(stack: List[BufferedImage], arguments: ArgumentStack): List[BufferedImage] = {
-    stack match {
-      case head :: (tail @ _ :: _) =>
-        val index = arguments.getInt("index").getOrElse(1)
-        val (xs, ys) = tail.splitAt(index)
-        xs ::: List(head) ::: ys
-      case _ => stack
-    }
-  }
-}
-
-class Over extends SepCommand {
-  def apply(stack: List[BufferedImage], arguments: ArgumentStack): List[BufferedImage] = {
-    stack match {
-      case Nil => Nil
-      case emoji :: tail =>
-        val head = new BufferedImage(emoji.getColorModel, emoji.copyData(null), emoji.getColorModel.isAlphaPremultiplied, null)
-        emoji :: tail ::: List(head)
-    }
-  }
-}
-
-class Drop extends SepCommand {
-  def apply(stack: List[BufferedImage], arguments: ArgumentStack): List[BufferedImage] = {
-    stack.drop(1)
   }
 }
